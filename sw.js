@@ -1,6 +1,6 @@
 // Metronomo da Palco: fa funzionare l'app anche senza internet.
 // Quando pubblichi una nuova versione, cambia il numero qui sotto.
-const VERSION = 'metronomo-v1';
+const VERSION = 'metronomo-v2';
 const FILES = [
   './',
   './index.html',
@@ -12,6 +12,11 @@ const FILES = [
   './icons/favicon.png'
 ];
 const FONTS = 'metronomo-fonts';
+
+// Una richiesta di rete che non risponde entro ms millisecondi viene abbandonata
+function withTimeout(p, ms) {
+  return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+}
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
@@ -30,25 +35,37 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  // Caratteri di Google: salvati alla prima apertura con internet, poi sempre dalla memoria
+  // Caratteri di Google: dalla memoria se ci sono, altrimenti rete con limite di 3 secondi
   if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
-    e.respondWith(
-      caches.open(FONTS).then(c => c.match(req).then(hit => hit || fetch(req).then(res => { c.put(req, res.clone()); return res; })))
-        .catch(() => new Response('', { status: 204 }))
-    );
+    e.respondWith((async () => {
+      const c = await caches.open(FONTS);
+      const hit = await c.match(req);
+      if (hit) return hit;
+      try {
+        const res = await withTimeout(fetch(req), 3000);
+        c.put(req, res.clone());
+        return res;
+      } catch (_) {
+        return new Response('', { status: 200, headers: { 'Content-Type': url.hostname === 'fonts.googleapis.com' ? 'text/css' : 'font/woff2' } });
+      }
+    })());
     return;
   }
 
   if (url.origin !== location.origin) return;
 
-  // File dell'app: subito dalla memoria, e in sottofondo si aggiorna se c'è rete
-  e.respondWith(
-    caches.open(VERSION).then(c =>
-      c.match(req, { ignoreSearch: true }).then(hit => {
-        const net = fetch(req).then(res => { if (res.ok) c.put(req, res.clone()); return res; }).catch(() => null);
-        if (hit) { e.waitUntil(net); return hit; }
-        return net.then(res => res || (req.mode === 'navigate' ? c.match('./index.html') : new Response('', { status: 504 })));
-      })
-    )
-  );
+  // File dell'app: subito dalla memoria; se c'è rete si aggiornano in sottofondo
+  const isPage = req.mode === 'navigate';
+  const net = withTimeout(fetch(req), 4000)
+    .then(async res => { if (res && res.ok) { const c = await caches.open(VERSION); await c.put(isPage ? './index.html' : req, res.clone()); } return res; })
+    .catch(() => null);
+  e.waitUntil(net);
+  e.respondWith((async () => {
+    const hit = isPage
+      ? (await caches.match('./index.html')) || (await caches.match('./'))
+      : await caches.match(req, { ignoreSearch: true });
+    if (hit) return hit;
+    const res = await net;
+    return res || new Response('Offline', { status: 503 });
+  })());
 });
