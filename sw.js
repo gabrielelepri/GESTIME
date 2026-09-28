@@ -1,15 +1,14 @@
 // Metronomo da Palco: fa funzionare l'app anche senza internet.
 // Quando pubblichi una nuova versione, cambia il numero qui sotto.
-const VERSION = 'metronomo-v2';
-const FILES = [
-  './',
-  './index.html',
+const VERSION = 'metronomo-v3';
+const CORE = ['./', './index.html'];
+const EXTRA = [
   './manifest.webmanifest',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  './icons/icon-maskable-512.png',
-  './icons/apple-touch-icon.png',
-  './icons/favicon.png'
+  './icon-192.png',
+  './icon-512.png',
+  './icon-maskable-512.png',
+  './apple-touch-icon.png',
+  './favicon.png'
 ];
 const FONTS = 'metronomo-fonts';
 
@@ -19,7 +18,10 @@ function withTimeout(p, ms) {
 }
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
+  // la pagina è indispensabile; le icone si salvano se ci sono, senza bloccare nulla
+  e.waitUntil(caches.open(VERSION)
+    .then(c => c.addAll(CORE).then(() => Promise.allSettled(EXTRA.map(f => c.add(f)))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
