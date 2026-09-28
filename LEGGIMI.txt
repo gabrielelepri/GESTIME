@@ -1,0 +1,34 @@
+METRONOMO DA PALCO - app installabile e offline
+================================================
+
+Contenuto della cartella
+  index.html              l'app
+  manifest.webmanifest    nome, colori e icone per l'installazione
+  sw.js                   la fa funzionare senza internet
+  icons/                  icone dell'app
+
+1) METTERLA ONLINE (una volta sola)
+   Modo piu' semplice, Netlify Drop (gratis):
+   - dal computer vai su https://app.netlify.com/drop
+   - crea un account gratuito, poi trascina l'INTERA cartella "metronomo-app" nella pagina
+   - dopo pochi secondi ti da' un indirizzo tipo https://nome-a-caso.netlify.app
+   - in "Site configuration" puoi cambiare il nome, ad es. metronomo-gabriele.netlify.app
+
+   In alternativa, Vercel: carica la cartella in un repository GitHub e importalo
+   da vercel.com come nuovo progetto (nessuna impostazione da cambiare).
+
+2) INSTALLARLA SUL TELEFONO (ognuno della band)
+   iPhone:  apri l'indirizzo in Safari > Condividi > Aggiungi alla schermata Home
+   Android: apri l'indirizzo in Chrome > menu > Installa app (o Aggiungi a schermata Home)
+   Aprila una volta con internet: da quel momento funziona anche senza rete.
+
+3) PORTARE I TUOI BRANI NELL'APP
+   Nella versione che usi ora: scheda Repertorio > Esporta file.
+   Nell'app installata: scheda Repertorio > Importa file.
+   Lo stesso file puoi mandarlo agli altri della band.
+
+4) AGGIORNARE L'APP IN FUTURO
+   Sostituisci index.html con la nuova versione, apri sw.js e cambia
+   'metronomo-v1' in 'metronomo-v2' (poi v3, ...), e ricarica la cartella
+   sullo stesso sito. I brani salvati sui telefoni non si perdono.
+   L'aggiornamento arriva la seconda volta che apri l'app con internet.
