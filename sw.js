@@ -1,6 +1,6 @@
 // Metronomo da Palco: fa funzionare l'app anche senza internet.
 // Quando pubblichi una nuova versione, cambia il numero qui sotto.
-const VERSION = 'metronomo-v3';
+const VERSION = 'metronomo-v4';
 const CORE = ['./', './index.html'];
 const EXTRA = [
   './manifest.webmanifest',

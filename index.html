@@ -83,6 +83,8 @@ input[type=range]{width:100%;accent-color:var(--amber);height:32px}
 
 /* sequenza */
 .seq{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.accrow{grid-column:1/-1;background:var(--panel);border-radius:12px;padding:6px 6px 6px 14px;display:grid;grid-template-columns:1fr 150px;align-items:center;gap:8px}
+.accrow .lbl{font-size:12px}
 .step{background:var(--panel);border-radius:12px;padding:8px 6px;display:flex;flex-direction:column;align-items:center;gap:4px}
 .step .ctl{display:flex;align-items:center;gap:6px}
 .step button{width:36px;height:36px;font-size:20px;font-weight:700}
@@ -221,6 +223,7 @@ li.ed .btn{height:44px}
     <section class="seq" aria-label="Sequenza di partenza">
       <div class="step"><span class="lbl">Partenza automatica</span><output id="o_pre">4 + 4</output><span class="lbl">vuoto + conteggio</span></div>
       <div class="step"><span class="lbl">Battute guida</span><div class="ctl"><button data-k="bars" data-d="-1" aria-label="Meno battute">−</button><output id="o_bars">4</output><button data-k="bars" data-d="1" aria-label="Più battute">+</button></div></div>
+      <div class="accrow"><span class="lbl">Accento sull'1</span><div class="seg" role="group" aria-label="Accento sull'1"><button id="accOn" aria-pressed="false">Sì</button><button id="accOff" aria-pressed="true">No</button></div></div>
     </section>
 
     <section class="stage" aria-live="polite">
@@ -330,7 +333,7 @@ function example(){
     {name:'Esempio · Ballata',bpm:72,sub:1},
     {name:'Esempio · Rock veloce',bpm:152,sub:1}
   ].map(cleanSong);
-  return {v:3,bars:4,li:0,updated:0,mode:'list',songId:null,draft:{name:'',bpm:120,sub:1},
+  return {v:3,bars:4,acc:false,li:0,updated:0,mode:'list',songId:null,draft:{name:'',bpm:120,sub:1},
     lib,lists:[{name:'Setlist principale',cur:0,ids:lib.map(s=>s.id)}]};
 }
 
@@ -353,7 +356,7 @@ function normalize(d){
   if(!lists.length)lists=[{name:'Setlist principale',cur:0,ids:[]}];
   lists.forEach(l=>l.cur=clamp(l.cur,0,Math.max(0,l.ids.length-1)));
   const dr=d.draft&&typeof d.draft==='object'?d.draft:{};
-  return {v:3,bars:clamp(+d.bars||4,0,32),li:clamp(+d.li||0,0,lists.length-1),updated:+d.updated||0,
+  return {v:3,bars:clamp(+d.bars||4,0,32),acc:d.acc===true,li:clamp(+d.li||0,0,lists.length-1),updated:+d.updated||0,
     mode:['list','song','draft'].includes(d.mode)?d.mode:'list',songId:d.songId?String(d.songId):null,
     draft:{name:String(dr.name||''),bpm:clamp(Math.round(+dr.bpm)||120,30,260),sub:+dr.sub===3?3:1},lib,lists};
 }
@@ -427,6 +430,7 @@ function render(){
   $('bpm').value=s.bpm;$('slider').value=s.bpm;
   $('subQ').setAttribute('aria-pressed',s.sub!==3);$('subT').setAttribute('aria-pressed',s.sub===3);
   $('o_bars').value=S.bars;
+  $('accOn').setAttribute('aria-pressed',!!S.acc);$('accOff').setAttribute('aria-pressed',!S.acc);
   $('o_pre').value=s.sub===3?'3 + 3':'4 + 4';
   renderPend();renderSave();renderLists();renderList();
   if(tab==='rep')renderRep();
@@ -553,6 +557,8 @@ $('bpm').onkeydown=e=>{if(e.key==='Enter')e.target.blur()};
 $('subQ').onclick=()=>setSub(1);
 $('subT').onclick=()=>setSub(3);
 document.querySelectorAll('.step button').forEach(b=>b.onclick=()=>{S.bars=clamp(S.bars+(+b.dataset.d),0,32);save();render()});
+$('accOn').onclick=()=>{S.acc=true;save();render()};
+$('accOff').onclick=()=>{S.acc=false;save();render()};
 let taps=[];
 $('tap').onclick=()=>{const t=performance.now();taps=taps.filter(x=>t-x<2500);taps.push(t);if(taps.length>1){const d=(taps[taps.length-1]-taps[0])/(taps.length-1);setBpm(60000/d)}};
 $('editBtn').onclick=()=>{editing=!editing;renderLists();renderList()};
@@ -777,36 +783,55 @@ function cloudPush(){
 
 /* ---------- Audio ---------- */
 let ctx=null;
-function click(time,kind){
-  const f={low:700,high:1600,pre:1100}[kind];
-  const o=ctx.createOscillator(),g=ctx.createGain();
-  o.type='square';
-  o.frequency.value=f;
-  const peak=kind==='low'?0.5:kind==='high'?0.32:0.45;
-  g.gain.setValueAtTime(0.0001,time);
-  g.gain.exponentialRampToValueAtTime(peak,time+0.002);
-  g.gain.exponentialRampToValueAtTime(0.0001,time+0.05);
-  o.connect(g).connect(ctx.destination);
-  o.start(time);o.stop(time+0.08);
+function click(time,kind,acc){
+  // woodblock (800 Hz), uguale su ogni clic: corpo risonante + attacco legnoso
+  // accento: stesso woodblock, solo più forte e appena più brillante
+  const out=ctx.createGain();out.gain.value=acc?1.0:0.6;out.connect(ctx.destination);
+  const tune=acc?1.12:1;
+  // corpo: due parziali inarmoniche con leggera caduta di intonazione
+  [[800,0.55,0.07],[2160,0.18,0.03]].forEach(([f,peak,dec])=>{
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    o.type='sine';
+    o.frequency.setValueAtTime(f*tune*1.04,time);
+    o.frequency.exponentialRampToValueAtTime(f*tune,time+0.012);
+    g.gain.setValueAtTime(0.0001,time);
+    g.gain.exponentialRampToValueAtTime(peak,time+0.001);
+    g.gain.exponentialRampToValueAtTime(0.0001,time+dec);
+    o.connect(g).connect(out);
+    o.start(time);o.stop(time+dec+0.02);
+  });
+  // attacco: breve colpo di rumore filtrato, il "toc" del legno
+  if(!click.nb){
+    const n=Math.floor(ctx.sampleRate*0.02),b=ctx.createBuffer(1,n,ctx.sampleRate),d=b.getChannelData(0);
+    for(let i=0;i<n;i++)d[i]=Math.random()*2-1;
+    click.nb=b;
+  }
+  const src=ctx.createBufferSource(),bp=ctx.createBiquadFilter(),ng=ctx.createGain();
+  src.buffer=click.nb;
+  bp.type='bandpass';bp.frequency.value=1600;bp.Q.value=3;
+  ng.gain.setValueAtTime(acc?0.5:0.35,time);
+  ng.gain.exponentialRampToValueAtTime(0.0001,time+0.015);
+  src.connect(bp).connect(ng).connect(out);
+  src.start(time);src.stop(time+0.02);
 }
 function build(){
   const s=song(),ev=[],tr=s.sub===3,pc=tr?3:4;let t=0;
-  // quarti: grave su 1 e 3, acuto su 2 e 4 · terzine: grave su 1, acuto su 2 e 3
+  // audio: woodblock unico; accento (se attivo) sul primo clic di ogni gruppo da 4 o da 3 · colori a schermo: ambra su 1 e 3, ciano su 2 e 4
   const kq=q=>(q%2===0?'low':'high');
   const st=tr?1/3:1; // terzine: ogni clic di partenza dura quanto una nota della terzina
   for(let i=0;i<pc;i++){ev.push({t,k:'pre',ph:'Clic a vuoto',n:i+1,of:pc});t+=st}
-  for(let i=0;i<pc;i++){ev.push({t,k:tr?(i===0?'low':'high'):kq(i),ph:'Conteggio',n:i+1,q:i});t+=st}
+  for(let i=0;i<pc;i++){ev.push({t,k:tr?(i===0?'low':'high'):kq(i),a:S.acc&&i===0,ph:'Conteggio',n:i+1,q:i});t+=st}
   t=Math.round(t);
   for(let b=0;b<S.bars;b++)for(let q=0;q<4;q++){
-    if(tr){for(let x=0;x<3;x++)ev.push({t:t+x/3,k:x===0?'low':'high',ph:'Guida',n:q+1,q,b,x});}
-    else ev.push({t,k:kq(q),ph:'Guida',n:q+1,q,b});
+    if(tr){for(let x=0;x<3;x++)ev.push({t:t+x/3,k:x===0?'low':'high',a:S.acc&&x===0,ph:'Guida',n:q+1,q,b,x});}
+    else ev.push({t,k:kq(q),a:S.acc&&q===0,ph:'Guida',n:q+1,q,b});
     t++;
   }
   return {ev,end:t};
 }
 let playing=false,seq,idx,uiIdx,t0,spb,timer,raf,wake=null,playSub=1;
 function sched(){
-  while(idx<seq.ev.length&&t0+seq.ev[idx].t*spb<ctx.currentTime+0.12){click(t0+seq.ev[idx].t*spb,seq.ev[idx].k);idx++}
+  while(idx<seq.ev.length&&t0+seq.ev[idx].t*spb<ctx.currentTime+0.12){click(t0+seq.ev[idx].t*spb,seq.ev[idx].k,seq.ev[idx].a);idx++}
 }
 function draw(){
   if(!playing)return;
